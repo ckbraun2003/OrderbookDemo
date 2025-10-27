@@ -45,6 +45,7 @@ private:
 
 using OrderPointer = std::shared_ptr<Order>;
 using OrderPointers = std::list<OrderPointer>;
+using PersonalOrderEntries = std::unordered_map<OrderId, OrderPointer>;
 
 class OrderModify
 {

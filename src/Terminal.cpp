@@ -12,7 +12,7 @@ void Terminal::PrintTitle()
 void Terminal::PrintTrades(const Trades& trades)
 {
   std::cout << "\nTrades\n";
-  std::cout << std::string(40, '-') << "\n";
+  std::cout << std::string(80, '=') << "\n";
   for (const auto& tradeInfo : trades)
   {
     TradeInfo bidInfo = tradeInfo.GetBidTrade();
@@ -23,7 +23,7 @@ void Terminal::PrintTrades(const Trades& trades)
     std::cout << std::format("Order[{}] -- [{}/{} filled @ ${}] -- [{}ns :matchEngineTime]\n", 
       askInfo.orderId_, askInfo.quantity_, askInfo.initialQuantity_, askInfo.price_,  askInfo.matchEngineTime_);
   }
-  std::cout << "\n";
+  std::cout << std::string(80, '=') << "\n";
 }
 
 int Terminal::MenuSelection()
@@ -33,9 +33,13 @@ int Terminal::MenuSelection()
   {
     std::cout << "\n=== MAIN MENU ===\n";
     std::cout << "1. Add Order\n";
-    std::cout << "2. Populate Orderbook\n";
-    std::cout << "3. Exit\n";
-    std::cout << "Enter your choice (1-3): ";
+    std::cout << "2. Cancel Order\n";
+    std::cout << "3. Modify Order\n";
+    std::cout << "4. Populate Orderbook\n";
+    std::cout << "5. Print Trades (Toggle)\n";
+    std::cout << "6. Print Orders (Toggle)\n";
+    std::cout << "7. Exit\n";
+    std::cout << "Enter your choice (1-7): ";
 
     std::cin >> choice;
 
@@ -53,9 +57,6 @@ int Terminal::MenuSelection()
 
 void Terminal::PrintOrderbook(const Orderbook& orderbook)
 {
-  const std::string red = "\033[1;31m";
-  const std::string green = "\033[1;32m";
-  const std::string reset = "\033[0m";
 
   OrderbookLevelInfos levelInfos = orderbook.GetLevelInfos();
 
@@ -71,12 +72,14 @@ void Terminal::PrintOrderbook(const Orderbook& orderbook)
     bidAskSpread = lowestAsk.price_ - greatestBid.price_;
   }
 
+  std::cout << "\Orderbook\n";
+  std::cout << std::string(40, '=') << "\n";
+
   std::cout << std::format("\n{:>10} |$ {:>8} | {:>10}\n",
     "Amount", "Price", "Quantity");
   std::cout << std::string(40, '_') << "\n";
 
   std::cout << "\nAsks\n";
-  std::cout << std::string(40, '-') << "\n";
 
   for (const auto& askInfo : std::views::reverse(asks))
   {
@@ -100,16 +103,50 @@ void Terminal::PrintOrderbook(const Orderbook& orderbook)
       bidInfo.quantity_, bidInfo.price_, green, bar, reset);
   }
 
-  std::cout << std::string(40, '-') << "\n";
-  std::cout << "Bids\n\n";
+  std::cout << "Bids\n";
+  std::cout << std::string(40, '=') << "\n";
 
 };
+
+void Terminal::PrintPersonalOrders(const PersonalOrderEntries& personalOrders)
+{
+  std::cout << "\nOrders\n";
+  std::cout << std::string(85, '=') << "\n";
+
+  std::cout << std::format("\n{:>8} | {:>6} |$ {:>6} | {:>8} | {:>20} | {:>20}\n",
+    "Order ID", "Side", "Price", "IsFilled", "Initial Quantity", "Remaining Quantity");
+  std::cout << std::string(85, '-') << "\n";
+
+  for (const auto& [orderId, order] : personalOrders)
+  {
+
+    Side side = order->GetSide();
+    Price price = order->GetPrice();
+    Quantity initialQuantity = order->GetInitialQuantity();
+    Quantity remainingQuantity = order->GetRemainingQuantity();
+    bool isFilled = order->IsFilled();
+
+    std::string sideColor = green;
+    std::string sideString = "BUY";
+
+    if (side == Side::Sell)
+    {
+      sideColor = red;
+      sideString = "SELL";
+    }
+
+    std::cout << std::format("{:>8} | {}{:>6}{} |$ {:>6} | {:>8} | {:>20} | {:>20}\n",
+      orderId, sideColor, sideString, reset, price, isFilled, initialQuantity, remainingQuantity);
+  }
+
+  std::cout << std::string(85, '=') << "\n";
+}
 
 void Terminal::PopulateOrderbook(Orderbook& orderbook, OrderId& orderId)
 {
   Price startingPrice = 100;
 
-  for (size_t i = 0; i < 10; ++i)
+  for (int i = 0; i < 10; ++i)
   {
     orderbook.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel,
       orderId, Side::Buy, (startingPrice - (i * 1)), GetRandomInt(10, 10 + (i * 5))));
@@ -122,20 +159,26 @@ void Terminal::PopulateOrderbook(Orderbook& orderbook, OrderId& orderId)
 };
 
 
-Trades Terminal::PlaceOrder(Orderbook& orderbook, OrderId& orderId)
+Trades Terminal::PlaceOrder(Orderbook& orderbook, OrderId& orderId, PersonalOrderEntries& personalOrders)
 {
+  std::cout << "\n=== Place Order ===\n";
+
   OrderType orderType = GetOrderType();
   Trades trades_;
 
+  OrderPointer order;
   if (orderType == OrderType::Market)
   {
-    trades_ = orderbook.AddOrder(std::make_shared<Order>(orderId, GetPosition(), GetQuantity()));
+    order = std::make_shared<Order>(orderId, GetPosition(), GetQuantity());
   }
   else
   {
-    trades_ = orderbook.AddOrder(std::make_shared<Order>(orderType, orderId, GetPosition(), GetPrice(),GetQuantity()));
+    order = std::make_shared<Order>(orderType, orderId, GetPosition(), GetPrice(), GetQuantity());
   }
 
+  trades_ = orderbook.AddOrder(order);
+  personalOrders.insert({ orderId, order });
+  
   ++orderId;
 
   ClearScreen();
@@ -143,6 +186,45 @@ Trades Terminal::PlaceOrder(Orderbook& orderbook, OrderId& orderId)
   return trades_;
   
 };
+
+Trades Terminal::ModifyOrder(Orderbook& orderbook, PersonalOrderEntries& personalOrders)
+{
+  PrintPersonalOrders(personalOrders);
+  std::cout << "\n=== Modify Order ===\n";
+
+  OrderId orderId = GetOrderId();
+  if (!personalOrders.contains(orderId))
+    ClearScreen();
+    return { };
+
+  OrderModify order = OrderModify(orderId, GetPosition(), GetPrice(), GetQuantity());
+
+  Trades trades = orderbook.ModifyOrder(order);
+
+  const auto& existingOrder = personalOrders.at(orderId);
+  personalOrders[orderId] = order.ToOrderPointer(existingOrder->GetOrderType());
+
+  ClearScreen();
+
+  return trades;
+}
+
+void Terminal::CancelOrder(Orderbook& orderbook, PersonalOrderEntries& personalOrders)
+{
+  PrintPersonalOrders(personalOrders);
+  std::cout << "\n=== Modify Order ===\n";
+
+  OrderId orderId = GetOrderId();
+
+  if (!personalOrders.contains(orderId))
+    ClearScreen();
+    return;
+
+  orderbook.CancelOrder(orderId);
+  personalOrders.erase(orderId);
+
+  ClearScreen();
+}
 
 OrderType Terminal::GetOrderType()
 {
@@ -153,7 +235,6 @@ OrderType Terminal::GetOrderType()
 
     int choice = 0;
 
-    std::cout << "\n=== PLACE ORDER ===\n";
     std::cout << "\n=== ORDERTYPE ===\n";
     std::cout << "1. Market\n";
     std::cout << "2. GoodTillCancel\n";
@@ -184,14 +265,11 @@ OrderType Terminal::GetOrderType()
 
 Side Terminal::GetPosition()
 {
-  ClearScreen();
-  PrintTitle();
   while (true)
   {
 
     int choice = 0;
 
-    std::cout << "\n=== PLACE ORDER ===\n";
     std::cout << "\n=== SIDE ===\n";
     std::cout << "1. Buy\n";
     std::cout << "2. Sell\n";
@@ -222,14 +300,11 @@ Side Terminal::GetPosition()
 
 Price Terminal::GetPrice()
 {
-  ClearScreen();
-  PrintTitle();
   while (true)
   {
 
     Price choice = 0;
 
-    std::cout << "\n=== PLACE ORDER ===\n";
     std::cout << "\n=== PRICE ===\n";
     std::cout << "Enter your price: $";
 
@@ -252,14 +327,11 @@ Price Terminal::GetPrice()
 
 Quantity Terminal::GetQuantity()
 {
-  ClearScreen();
-  PrintTitle();
   while (true)
   {
 
     Quantity choice = 0;
 
-    std::cout << "\n=== PLACE ORDER ===\n";
     std::cout << "\n=== Quantity ===\n";
     std::cout << "Enter your quantity: ";
 
@@ -279,6 +351,34 @@ Quantity Terminal::GetQuantity()
     }
   }
 };
+
+OrderId Terminal::GetOrderId()
+{
+  while (true)
+  {
+
+    OrderId choice = 0;
+
+    std::cout << "\n=== Order ID ===\n";
+    std::cout << "Enter the Order ID: ";
+
+    std::cin >> choice;
+
+    // Handle invalid input (non-numeric)
+    if (std::cin.fail())
+    {
+      std::cin.clear();
+      std::cin.ignore(1000, '\n');
+      std::cout << "Invalid input. Please enter a number.\n";
+      continue;
+    }
+    else
+    {
+      return choice;
+    }
+  }
+}
+
 
 void Terminal::ClearScreen()
 {

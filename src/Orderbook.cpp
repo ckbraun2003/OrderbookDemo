@@ -48,7 +48,6 @@ void Orderbook::CancelOrder(OrderId orderId)
 		return;
 
 	const auto& [order, iterator] = orders_.at(orderId);
-	orders_.erase(orderId);
 
 	if (order->GetSide() == Side::Sell)
 	{
@@ -66,6 +65,7 @@ void Orderbook::CancelOrder(OrderId orderId)
 		if (orders.empty())
 			bids_.erase(price);
 	}
+	orders_.erase(orderId);
 };
 
 Trades Orderbook::ModifyOrder(OrderModify order)
@@ -74,8 +74,11 @@ Trades Orderbook::ModifyOrder(OrderModify order)
 		return { };
 
 	const auto& [existingOrder, _] = orders_.at(order.GetOrderId());
+	const auto orderType = existingOrder->GetOrderType();
+
 	CancelOrder(order.GetOrderId());
-	return AddOrder(order.ToOrderPointer(existingOrder->GetOrderType()));
+	Trades trades = AddOrder(order.ToOrderPointer(orderType));
+	return trades;
 };
 
 bool Orderbook::CanMatch(Side side, Price price) const
