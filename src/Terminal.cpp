@@ -194,9 +194,10 @@ Trades Terminal::ModifyOrder(Orderbook& orderbook, PersonalOrderEntries& persona
 
   OrderId orderId = GetOrderId();
   if (!personalOrders.contains(orderId))
+  {
     ClearScreen();
     return { };
-
+  }
   OrderModify order = OrderModify(orderId, GetPosition(), GetPrice(), GetQuantity());
 
   Trades trades = orderbook.ModifyOrder(order);
@@ -217,9 +218,10 @@ void Terminal::CancelOrder(Orderbook& orderbook, PersonalOrderEntries& personalO
   OrderId orderId = GetOrderId();
 
   if (!personalOrders.contains(orderId))
+  {
     ClearScreen();
     return;
-
+  }
   orderbook.CancelOrder(orderId);
   personalOrders.erase(orderId);
 
